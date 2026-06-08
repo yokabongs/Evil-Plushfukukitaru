@@ -1,42 +1,53 @@
+"""
+N-Word Counter Bot — for laughs
+Tracks a single targeted user's n-word usage.
+Anyone in the server can use /count, /scan, and /lb.
+
+Setup:
+1. Set environment variables:
+   - DISCORD_BOT_TOKEN  → your bot token
+   - TARGET_USER_ID     → the Discord user ID to track (numbers only)
+2. Deploy to Render as a Background Worker
+3. Invite with scopes: bot + applications.commands
+   Permissions: Read Messages, Send Messages, Read Message History
+4. Enable Message Content Intent in the Discord Developer Portal:
+   Bot tab -> Privileged Gateway Intents -> Message Content Intent
+"""
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import re
 from datetime import datetime
 
+# ── Config ────────────────────────────────────────────────────────────────────
 BOT_TOKEN      = os.environ["DISCORD_BOT_TOKEN"]
 TARGET_USER_ID = int(os.environ["TARGET_USER_ID"])
 
-import re
-
-# Breakdown:
-#   n         — letter n
-#   [i1!|]+   — i / 1 / ! / | (leet i)
-#   [g9q@]+   — one or more g / 9 / q / @ (leet g); catches "niqqer", "n1g9a"
-#   [g9q@]*   — optional second cluster (double-g variants)
-#   [aeiouæ@3uh]*  — optional vowel tail: a/e/i/o/u/æ/@/3/u/h
-#   [rz]*     — optional trailing r or z ("niggerz", "niggaz")
 SLUR_PATTERN = re.compile(
     r"n[i1!|]+[g9q@]+[g9q@]*[aeiou\xE6@3uh]*[rz]*",
     re.IGNORECASE,
 )
 
 def contains_slur(text: str) -> bool:
-    # Strip spaces so "n i g g a" still matches
     return bool(SLUR_PATTERN.search(text.replace(" ", "")))
 
+# guild_id -> count (target only)
 live_count: dict[int, int] = {}
 
+# ── Bot setup ─────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
+# ── Events ────────────────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
     await tree.sync()
-    print(f"✅ Logged in as {bot.user} — tracking user ID {TARGET_USER_ID}")
+    print(f"Logged in as {bot.user} — tracking user ID {TARGET_USER_ID}")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -57,7 +68,10 @@ async def on_message(message: discord.Message):
         f"lmaooo {message.author.mention} said it again, (#{n} all time)"
     )
 
-@tree.command(name="count", description="How many times has the Alex said it?")
+    await bot.process_commands(message)
+
+# ── /count ────────────────────────────────────────────────────────────────────
+@tree.command(name="count", description="How many times has Alex said the n-word?")
 async def slash_count(interaction: discord.Interaction):
     guild_id = interaction.guild_id or 0
     total = live_count.get(guild_id, 0)
@@ -69,12 +83,13 @@ async def slash_count(interaction: discord.Interaction):
         name = f"User {TARGET_USER_ID}"
 
     embed = discord.Embed(
-        title="Alex N-Word Counter",
+        title=" N-Word Counter",
         description=f"**{name}** has said it **{total}** time(s).",
         color=discord.Color.yellow(),
     )
     await interaction.response.send_message(embed=embed)
 
+# ── /scan ─────────────────────────────────────────────────────────────────────
 @tree.command(name="scan", description="Scan full message history to get the true total.")
 async def slash_scan(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
@@ -102,16 +117,14 @@ async def slash_scan(interaction: discord.Interaction):
 
     live_count[guild.id] = total
 
-    embed = discord.Embed(
-        title="🔍 Full History Scan Done",
-        color=discord.Color.red(),
-    )
+    embed = discord.Embed(title="🔍 Full History Scan Done", color=discord.Color.red())
     embed.add_field(name="User",     value=name,              inline=True)
     embed.add_field(name="Total",    value=str(total),        inline=True)
     embed.add_field(name="Channels", value=str(channels_scanned), inline=True)
     await interaction.followup.send(embed=embed)
 
-@tree.command(name="lb", description="N-word leaderboard across servers.")
+# ── /lb ───────────────────────────────────────────────────────────────────────
+@tree.command(name="lb", description="N-word count across all servers.")
 async def slash_lb(interaction: discord.Interaction):
     if not live_count:
         await interaction.response.send_message("No data yet — run `/scan` first!")
@@ -135,4 +148,5 @@ async def slash_lb(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
+# ── Run ───────────────────────────────────────────────────────────────────────
 bot.run(BOT_TOKEN)
