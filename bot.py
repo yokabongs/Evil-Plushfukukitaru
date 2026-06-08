@@ -1,19 +1,3 @@
-"""
-N-Word Counter Bot — for laughs
-Tracks a single targeted user's n-word usage.
-Anyone in the server can use /count, /scan, and /lb.
-
-Setup:
-1. Set environment variables:
-   - DISCORD_BOT_TOKEN  → your bot token
-   - TARGET_USER_ID     → the Discord user ID to track (numbers only)
-2. Deploy to Render as a Background Worker
-3. Invite with scopes: bot + applications.commands
-   Permissions: Read Messages, Send Messages, Read Message History
-4. Enable Message Content Intent in the Discord Developer Portal:
-   Bot tab -> Privileged Gateway Intents -> Message Content Intent
-"""
-
 import discord
 from discord import app_commands
 from discord.ext import commands
