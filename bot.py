@@ -4,15 +4,14 @@ from discord.ext import commands
 import os
 import re
 import threading
-import asyncio
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
  
 # ── Config ────────────────────────────────────────────────────────────────────
 BOT_TOKEN      = os.environ["DISCORD_BOT_TOKEN"]
 TARGET_USER_ID = int(os.environ["TARGET_USER_ID"])
+OWNER_USER_ID  = int(os.environ["OWNER_USER_ID"])
 PORT           = int(os.environ.get("PORT", 8080))
-SCAN_LIMIT     = 15000   # messages per channel (raise if needed)
  
 SLUR_PATTERN = re.compile(
     r"n[i1!|]+[g9q@]+[g9q@]*[aeiou\xE6@3uh]*[rz]*",
@@ -82,70 +81,38 @@ async def slash_count(interaction: discord.Interaction):
         name = f"User {TARGET_USER_ID}"
  
     embed = discord.Embed(
-        title="Alex N-Word Counter",
+        title="💀 N-Word Counter",
         description=f"**{name}** has said it **{total}** time(s).",
         color=discord.Color.yellow(),
     )
     await interaction.response.send_message(embed=embed)
  
-# ── /scan ─────────────────────────────────────────────────────────────────────
-@tree.command(name="scan", description=f"Scan up to {15000} messages per channel for the true total.")
-async def slash_scan(interaction: discord.Interaction):
-    await interaction.response.defer(thinking=True)
+# ── /setcount ─────────────────────────────────────────────────────────────────
+@tree.command(name="setcount", description="Manually set the n-word count (owner only).")
+@app_commands.describe(value="The count to set")
+async def slash_setcount(interaction: discord.Interaction, value: int):
+    if interaction.user.id != OWNER_USER_ID:
+        await interaction.response.send_message("❌ Only the bot owner can use this.", ephemeral=True)
+        return
+ 
+    guild_id = interaction.guild_id or 0
+    live_count[guild_id] = value
  
     try:
-        target = await bot.fetch_user(TARGET_USER_ID)
-        name = target.display_name
+        user = await bot.fetch_user(TARGET_USER_ID)
+        name = user.display_name
     except Exception:
         name = f"User {TARGET_USER_ID}"
  
-    guild = interaction.guild
-    total = 0
-    channels_scanned = 0
-    skipped = 0
- 
-    for channel in guild.text_channels:
-        if not channel.permissions_for(guild.me).read_message_history:
-            skipped += 1
-            continue
- 
-        channels_scanned += 1
-        channel_count = 0
- 
-        try:
-            async for msg in channel.history(limit=SCAN_LIMIT, oldest_first=False):
-                if msg.author.id == TARGET_USER_ID and contains_slur(msg.content):
-                    channel_count += 1
-                await asyncio.sleep(0)  # yield to event loop, prevents hanging
-        except discord.Forbidden:
-            skipped += 1
-            channels_scanned -= 1
-            continue
-        except Exception as e:
-            print(f"Error scanning #{channel.name}: {e}")
-            continue
- 
-        if channel_count:
-            print(f"  #{channel.name}: {channel_count}")
-        total += channel_count
- 
-    live_count[guild.id] = total
- 
-    embed = discord.Embed(title="🔍 Scan Done", color=discord.Color.red())
-    embed.add_field(name="User",             value=name,              inline=True)
-    embed.add_field(name="Total Found",      value=str(total),        inline=True)
-    embed.add_field(name="Channels Scanned", value=str(channels_scanned), inline=True)
-    if skipped:
-        embed.set_footer(text=f"{skipped} channel(s) skipped (no access)")
-    embed.description = f"*(scanned last {SCAN_LIMIT:,} messages per channel)*"
- 
-    await interaction.followup.send(embed=embed)
+    await interaction.response.send_message(
+        f"✅ Count for **{name}** set to **{value}**.", ephemeral=True
+    )
  
 # ── /lb ───────────────────────────────────────────────────────────────────────
 @tree.command(name="lb", description="N-word count across all servers.")
 async def slash_lb(interaction: discord.Interaction):
     if not live_count:
-        await interaction.response.send_message("No data yet — run `/scan` first!")
+        await interaction.response.send_message("No data yet — use `/setcount` to set an initial value!")
         return
  
     try:
@@ -168,3 +135,4 @@ async def slash_lb(interaction: discord.Interaction):
  
 # ── Run ───────────────────────────────────────────────────────────────────────
 bot.run(BOT_TOKEN)
+ 
